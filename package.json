@@ -1,0 +1,8 @@
+{
+  "name": "tvyls-concessions",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@netlify/blobs": "*"
+  }
+}
