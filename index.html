@@ -7,9 +7,9 @@
 <!--
   TVYLS CONCESSIONS SIGN-UP - Fall Ball 2026 (UPDATED GAME TIMES)
   - All shift data lives in DATA below. Slots are blank for relaunch.
-  - Claims use localStorage (per-device). If the existing site has shared
-    storage, tell Claude Code: "wire claimSlot() and removeName() to the
-    existing shared storage backend, keep this UI and DATA as is."
+  - Names are saved on the server via /.netlify/functions/slots (Netlify
+    Blobs), so everyone with the link sees the same sheet. Nothing is
+    stored in the browser.
   - The league logo is embedded below as base64; no separate file needed.
 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -165,32 +165,57 @@ const CAP = 3;
 const STORE_KEY = "tvyls-fallball-2026-v2";
 const TOTAL = DATA.length * 3 * CAP;
 
-function loadClaims() {
-  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (e) { return {}; }
-}
-function saveClaims(c) { try { localStorage.setItem(STORE_KEY, JSON.stringify(c)); } catch (e) {} }
+/* Shared storage: names live on the server, not in this browser. */
+const API = "/.netlify/functions/slots";
+let STATE = { slots: {} };
+let busy = false;
+
+function keyOf(d, s) { return d + "-" + s; }
 function slotNames(d, s) {
-  const extra = loadClaims()[d + "|" + s] || [];
-  return DATA[d].shifts[s].names.concat(extra);
+  const list = STATE.slots[keyOf(d, s)] || [];
+  return list.map(function (e) { return e && e.n ? e.n : String(e); });
+}
+function applyState(data) {
+  if (data && data.slots) STATE = data;
+  render();
+}
+function loadState() {
+  return fetch(API, { cache: "no-store" })
+    .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+    .then(applyState)
+    .catch(function () {
+      const el = document.getElementById("filled-count");
+      if (el) el.textContent = "?";
+    });
+}
+function send(body) {
+  if (busy) return;
+  busy = true;
+  return fetch(API, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body)
+  })
+    .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+    .then(function (d) { busy = false; applyState(d); })
+    .catch(function () {
+      busy = false;
+      alert("That did not save. Check your connection and try once more.");
+    });
 }
 function claimSlot(d, s) {
+  if (busy) return;
   const name = prompt("Type your name to claim this slot:");
   if (!name || !name.trim()) return;
-  const claims = loadClaims();
-  const key = d + "|" + s;
-  claims[key] = claims[key] || [];
   if (slotNames(d, s).length >= CAP) { alert("Sorry, this shift just filled up."); render(); return; }
-  claims[key].push(name.trim());
-  saveClaims(claims);
-  render();
+  send({ action: "add", key: keyOf(d, s), name: name.trim() });
 }
 function removeName(d, s, name) {
+  if (busy) return;
   if (!confirm("Remove " + name + " from this shift?")) return;
-  const claims = loadClaims();
-  const key = d + "|" + s;
-  claims[key] = (claims[key] || []).filter(n => n !== name);
-  saveClaims(claims);
-  render();
+  const i = slotNames(d, s).indexOf(name);
+  if (i < 0) return;
+  send({ action: "remove", key: keyOf(d, s), index: i, name: name });
 }
 function render() {
   const app = document.getElementById("app");
@@ -240,6 +265,11 @@ let track = "";
 for (let r = 0; r < 6; r++) phrases.forEach(p => track += '<span>' + p + ' &nbsp;\u2605</span>');
 document.getElementById("marquee").innerHTML = track;
 render();
+loadState();
+setInterval(function () { if (document.visibilityState === "visible" && !busy) loadState(); }, 30000);
+document.addEventListener("visibilitychange", function () {
+  if (document.visibilityState === "visible" && !busy) loadState();
+});
 </script>
 </body>
 </html>
