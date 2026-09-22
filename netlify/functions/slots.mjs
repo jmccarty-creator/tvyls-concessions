@@ -2,7 +2,7 @@ import { getStore } from "@netlify/blobs";
 
 const KEY = "fall2026";
 const CAP = 3;
-const VALID = /^[0-5]-(setup|early|late|close)$/;
+const VALID = /^[0-5]-([0-2]|setup|early|late|close)$/;
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), {
